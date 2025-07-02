@@ -19,22 +19,23 @@
   </header>
   <div id='graph'></div>
   <script>
-    const dot = $(digraph Dependencies {
-  rankdir=LR;
-  "Application02" -> "Application04";
-  "Application02" -> "Application05";
-  "Application02" -> "Swashbuckle.AspNetCore";
-  "Application03" -> "Application05";
-  "Application03" -> "Newtonsoft.Json";
-  "Application04" -> "Application03";
-  "Application04" -> "RabbitMQ.Client";
-  "Application05" -> "Dapper";
-}
- -replace """, "\\"");
-    const viz = new Viz();
-    viz.renderSVGElement(dot)
-      .then(svg => document.getElementById('graph').appendChild(svg))
-      .catch(error => console.error(error));
+    const raw = digraph Dependencies {
+      rankdir=LR;
+      "App04" -> "App03";
+      "App04" -> "App05";
+      "App01" -> "Newtonsoft.Json";
+      // ... other dependencies
+    };
+  
+    document.addEventListener("DOMContentLoaded", () => {
+      const viz = new Viz();
+      viz.renderSVGElement(raw)
+        .then(svg => document.getElementById('graph').appendChild(svg))
+        .catch(error => {
+          console.error("Viz.js error:", error);
+          document.getElementById('graph').innerHTML = "<p style='color:red;'>Graph render failed.</p>";
+        });
+    });
   </script>
 </body>
 </html>
