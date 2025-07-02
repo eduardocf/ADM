@@ -17,7 +17,7 @@ jobs:
         run: |
           $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
           foreach ($repo in $repos) {
-            git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/org/$repo.git
+            git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/eduardocf/$repo.git
           }
         shell: pwsh
 
