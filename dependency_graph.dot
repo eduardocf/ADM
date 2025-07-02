@@ -1,12 +1,8 @@
 digraph Dependencies {
   rankdir=LR;
-  "Application02" -> "Application04";
-  "Application02" -> "Application05";
-  "Application02" -> "Swashbuckle.AspNetCore";
-  "Application03" -> "Application01";
-  "Application03" -> "Application05";
-  "Application03" -> "Newtonsoft.Json";
-  "Application04" -> "Application03";
-  "Application04" -> "RabbitMQ.Client";
-  "Application05" -> "Dapper";
+  "Application01";
+  "Application02";
+  "Application03";
+  "Application04";
+  "Application05";
 }

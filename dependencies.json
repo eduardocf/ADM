@@ -1,33 +1,38 @@
 [
   {
     "project": "Application01",
-    "dependencies": null
+    "nuget": null,
+    "dll": null,
+    "api": null
   },
   {
     "project": "Application02",
-    "dependencies": [
+    "nuget": "Swashbuckle.AspNetCore",
+    "dll": [
       "Application04",
-      "Application05",
-      "Swashbuckle.AspNetCore"
-    ]
+      "Application05"
+    ],
+    "api": null
   },
   {
     "project": "Application03",
-    "dependencies": [
+    "nuget": "Newtonsoft.Json",
+    "dll": [
       "Application01",
-      "Application05",
-      "Newtonsoft.Json"
-    ]
+      "Application05"
+    ],
+    "api": null
   },
   {
     "project": "Application04",
-    "dependencies": [
-      "Application03",
-      "RabbitMQ.Client"
-    ]
+    "nuget": "RabbitMQ.Client",
+    "dll": "Application03",
+    "api": null
   },
   {
     "project": "Application05",
-    "dependencies": "Dapper"
+    "nuget": "Dapper",
+    "dll": null,
+    "api": null
   }
 ]
