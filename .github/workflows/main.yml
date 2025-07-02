@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout orchestrator repo
         uses: actions/checkout@v3
 
       - name: Clone application repositories
@@ -21,7 +21,7 @@ jobs:
             git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/eduardocf/$repo.git
           }
 
-      - name: Extract dependencies from .csproj, packages.config, appsettings.json, *.config
+      - name: Extract all dependencies
         shell: pwsh
         run: |
           $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
@@ -34,13 +34,11 @@ jobs:
             $dll = @()
             $apis = @()
 
-            # Get project name from first .csproj found
             $csproj = Get-ChildItem -Recurse -Filter *.csproj -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($csproj) {
               $projectName = Split-Path $csproj.Directory.FullName -Leaf
             }
 
-            # Parse .csproj for dependencies
             Get-ChildItem -Recurse -Filter *.csproj -ErrorAction SilentlyContinue | ForEach-Object {
               [xml]$xml = Get-Content $_.FullName
               $nuget += $xml.Project.ItemGroup.PackageReference | ForEach-Object { $_.Include }
@@ -50,13 +48,11 @@ jobs:
                 ForEach-Object { $_.Include }
             }
 
-            # Legacy packages.config
             Get-ChildItem -Recurse -Filter packages.config -ErrorAction SilentlyContinue | ForEach-Object {
               [xml]$xml = Get-Content $_.FullName
               $nuget += $xml.packages.package | ForEach-Object { $_.id }
             }
 
-            # Extract URLs from appsettings.json
             Get-ChildItem -Recurse -Filter appsettings.json -ErrorAction SilentlyContinue | ForEach-Object {
               $json = Get-Content $_.FullName -Raw | ConvertFrom-Json
               $json.PSObject.Properties | ForEach-Object {
@@ -69,13 +65,12 @@ jobs:
               }
             }
 
-            # Extract URLs from *.config (e.g., web.config, App.config)
             Get-ChildItem -Recurse -Include *.config -ErrorAction SilentlyContinue | ForEach-Object {
               try {
                 [xml]$xml = Get-Content $_.FullName
                 $settings = $xml.SelectNodes("//appSettings/add") | Where-Object { $_.value -match '^https?://' }
                 $settings | ForEach-Object { $apis += $_.value }
-              } catch { }
+              } catch {}
             }
 
             $results += [PSCustomObject]@{
@@ -90,21 +85,26 @@ jobs:
 
           $results | ConvertTo-Json -Depth 5 | Out-File dependencies.json -Encoding utf8
 
-      - name: Generate DOT file with styles
+      - name: Generate styled .dot file
         shell: pwsh
         run: |
           $json = Get-Content dependencies.json | ConvertFrom-Json
-          $lines = @("digraph Dependencies {", "  rankdir=LR;", "  node [style=filled, fontname='Segoe UI'];")
-          $declared = @{}
+          $lines = @(
+            "digraph Dependencies {",
+            "  rankdir=LR;",
+            "  node [style=filled, fontname='Segoe UI'];"
+          )
+          $seen = @{}
 
           foreach ($item in $json) {
             $app = $item.project
+            $seen[$app] = $true
 
             foreach ($pkg in $item.nuget) {
               if ($pkg) {
                 $lines += '  "' + $app + '" -> "' + $pkg + '" [color=black];'
                 $lines += '  "' + $pkg + '" [shape=box, fillcolor="#e6f0ff"];'
-                $declared[$pkg] = $true
+                $seen[$pkg] = $true
               }
             }
 
@@ -112,27 +112,29 @@ jobs:
               if ($dll) {
                 $lines += '  "' + $app + '" -> "' + $dll + '" [color=blue];'
                 $lines += '  "' + $dll + '" [shape=ellipse, fillcolor="#fff2cc"];'
-                $declared[$dll] = $true
+                $seen[$dll] = $true
               }
             }
 
             foreach ($url in $item.api) {
               if ($url) {
-                $label = $url -replace '^https?://', ''
-                $label = $label -replace '"', "'"
-                $lines += '  "' + $app + '" -> "' + $url + '" [style=dashed, color=gray];'
-                $lines += '  "' + $url + '" [label="' + $label + '", shape=diamond, fillcolor="#f8e0e6"];'
-                $declared[$url] = $true
+                try {
+                  $uri = [System.Uri]$url
+                  $domain = $uri.Host
+                } catch {
+                  $domain = $url
+                }
+                $label = $domain.Replace('"', "'")
+                $lines += '  "' + $app + '" -> "' + $domain + '" [style=dashed, color=gray];'
+                $lines += '  "' + $domain + '" [label="' + $label + '", shape=diamond, fillcolor="#f8e0e6"];'
+                $seen[$domain] = $true
               }
             }
-
-            $declared[$app] = $true
           }
 
-          # Add any orphan nodes explicitly
-          foreach ($node in $declared.Keys | Sort-Object) {
-            if (-not ($lines -join "`n" -match '"' + [regex]::Escape($node) + '"')) {
-              $lines += '  "' + $node + '";'
+          foreach ($n in $seen.Keys | Sort-Object) {
+            if (-not ($lines -join "`n" -match '"' + [regex]::Escape($n) + '"')) {
+              $lines += '  "' + $n + '";'
             }
           }
 
@@ -155,7 +157,7 @@ jobs:
           <html>
           <head>
             <meta charset='utf-8'>
-            <title>Application Dependency Graph</title>
+            <title>Dependency Graph</title>
             <style>
               body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; text-align: center; margin: 0; padding: 2rem; }
               header { background: #0366d6; color: white; padding: 1rem; }
@@ -166,10 +168,10 @@ jobs:
           <body>
             <header>
               <h1>📊 Application Dependency Graph</h1>
-              <p>NuGet • DLL • API (from config files)</p>
+              <p>NuGet • DLL • External APIs</p>
             </header>
             $svg
-            <footer>Generated by GitHub Actions and Graphviz</footer>
+            <footer>Generated via GitHub Actions & Graphviz</footer>
           </body>
           </html>
           "@
@@ -181,3 +183,5 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
           publish_dir: ./artifacts
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
