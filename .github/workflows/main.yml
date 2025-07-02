@@ -139,12 +139,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8      
 
-      - name: Upload .dot file for debugging
-        uses: actions/upload-artifact@v3
-        with:
-          name: dependency-graph-dot
-          path: artifacts/dependency_graph.dot
-
       - name: Install Graphviz and render SVG
         run: |
           choco install graphviz -y
