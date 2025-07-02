@@ -88,56 +88,32 @@ jobs:
 
           $result | ConvertTo-Json -Depth 5 | Out-File dependencies.json -Encoding utf8
 
-      - name: Generate safe .dot file
+      - name: Generate .dot file (including stand-alone apps)
         shell: pwsh
         run: |
           $json = Get-Content dependencies.json | ConvertFrom-Json
-          $dot = @()
-          $dot += "digraph Dependencies {"
-          $dot += "  rankdir=LR;"
-          $dot += "  node [style=filled, fillcolor=white, fontname='Segoe UI'];"
-          $allNodes = @{}
-
+          $dotLines = @("digraph Dependencies {", "  rankdir=LR;")
+          $allNodes = @()
           foreach ($item in $json) {
-              $app = $item.project
-              $allNodes[$app] = $true
-
-              foreach ($pkg in $item.nuget) {
-                  if ($pkg) {
-                      $allNodes[$pkg] = $true
-                      $dot += "  `"$app`" -> `"$pkg`" [color=black];"
-                      $dot += "  `"$pkg`" [shape=box, fillcolor=""#e6f0ff""];"
-                  }
-              }
-
-              foreach ($dll in $item.dll) {
-                  if ($dll) {
-                      $allNodes[$dll] = $true
-                      $dot += "  `"$app`" -> `"$dll`" [color=blue];"
-                      $dot += "  `"$dll`" [shape=ellipse, fillcolor=""#fff2cc""];"
-                  }
-              }
-
-              foreach ($url in $item.api) {
-                  if ($url) {
-                      $label = $url -replace "^https?://", ""
-                      $label = $label -replace '"', "'"
-                      $allNodes[$url] = $true
-                      $dot += "  `"$app`" -> `"$url`" [style=dashed, color=gray];"
-                      $dot += "  `"$url`" [label=`"$label`", shape=diamond, fillcolor=""#f8e0e6""];"
+              $allNodes += $item.project
+              $allNodes += $item.dependencies
+              foreach ($dep in $item.dependencies) {
+                  if ($dep -and $dep -ne $item.project) {
+                      $dotLines += "  `"$($item.project)`" -> `"$($dep)`";"
                   }
               }
           }
 
-          foreach ($node in $allNodes.Keys | Sort-Object) {
-              if (-not ($dot -join "`n" -match "`"$node`"")) {
-                  $dot += "  `"$node`";"
+          foreach ($node in $allNodes | Sort-Object -Unique) {
+              if (-not ($dotLines -match "`"$node`"")) {
+                  $dotLines += "  `"$node`";"
               }
           }
 
-          $dot += "}"
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8      
+          $dotLines += "}"
+          $dotLines | Out-File artifacts/dependency_graph.dot -Encoding utf8
+          Move-Item dependencies.json artifacts/  
 
       - name: Install Graphviz and render SVG
         run: |
