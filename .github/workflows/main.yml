@@ -96,40 +96,40 @@ jobs:
           $dot.Add("digraph Dependencies {")
           $dot.Add("  rankdir=LR;")
           $dot.Add("  node [style=filled, fillcolor=white, fontname='Segoe UI'];")
-
+      
           $allNodes = @()
-
+      
           foreach ($item in $json) {
               $app = $item.project
               $allNodes += $app
-
+      
               foreach ($pkg in $item.nuget) {
                   $allNodes += $pkg
-                  $dot.Add("  `"$app`" -> `"$pkg`" [color=black];")
-                  $dot.Add("  `"$pkg`" [shape=box, fillcolor=\"#e6f0ff\"];")
+                  $dot.Add('  "' + $app + '" -> "' + $pkg + '" [color=black];')
+                  $dot.Add('  "' + $pkg + '" [shape=box, fillcolor="#e6f0ff"];')
               }
-
+      
               foreach ($dll in $item.dll) {
                   $allNodes += $dll
-                  $dot.Add("  `"$app`" -> `"$dll`" [color=blue];")
-                  $dot.Add("  `"$dll`" [shape=ellipse, fillcolor=\"#fff2cc\"];")
+                  $dot.Add('  "' + $app + '" -> "' + $dll + '" [color=blue];')
+                  $dot.Add('  "' + $dll + '" [shape=ellipse, fillcolor="#fff2cc"];')
               }
-
+      
               foreach ($url in $item.api) {
                   $allNodes += $url
                   $label = $url -replace '^https?://', ''
                   $escaped = $label.Replace('"', "'")
-                  $dot.Add("  `"$app`" -> `"$url`" [style=dashed, color=gray];")
-                  $dot.Add("  `"$url`" [label=`"$escaped`", shape=diamond, fillcolor=\"#f8e0e6\"];")
+                  $dot.Add('  "' + $app + '" -> "' + $url + '" [style=dashed, color=gray];')
+                  $dot.Add('  "' + $url + '" [label="' + $escaped + '", shape=diamond, fillcolor="#f8e0e6"];')
               }
           }
-
+      
           foreach ($n in $allNodes | Sort-Object -Unique) {
-              if (-not ($dot -join "`n" -match "`"$n`"")) {
-                  $dot.Add("  `"$n`";")
+              if (-not ($dot -join "`n" -match '"' + [regex]::Escape($n) + '"')) {
+                  $dot.Add('  "' + $n + '";')
               }
           }
-
+      
           $dot.Add("}")
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8
