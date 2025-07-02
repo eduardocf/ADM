@@ -80,11 +80,12 @@ jobs:
           foreach ($item in $json) {
               foreach ($dep in $item.dependencies) {
                   if ($dep -and $dep -ne $item.project) {
-                    $dot += "`n  `"$($item.project)`" -> `"$($dep)`";"
+                      $dot += "`n  `"$($item.project)`" -> `"$($dep)`";"
                   }
               }
           }
           $dot += "`n}"
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8
 
       - name: Generate interactive index.html
