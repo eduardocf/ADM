@@ -92,7 +92,7 @@ jobs:
           $lines = @(
             "digraph Dependencies {",
             "  rankdir=LR;",
-            "  node [style=filled, fontname=\"Segoe UI\"];"
+            "  node [style=filled];"
           )
           $seen = @{}
 
