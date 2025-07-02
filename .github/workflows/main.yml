@@ -1,9 +1,8 @@
-
 name: Build and Publish Dependency Graph
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Every 5 minutes
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -22,123 +21,119 @@ jobs:
             git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/eduardocf/$repo.git
           }
 
-      - name: Extract all dependencies (code + config)
+      - name: Extract code-based dependencies
         shell: pwsh
         run: |
-            $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
-            $result = @()
+          $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
+          $result = @()
 
-            foreach ($repo in $repos) {
-                Set-Location $repo
-                $projectDependencies = @{}
-                $projectName = $repo  # Default fallback
+          foreach ($repo in $repos) {
+              Set-Location $repo
+              $deps = @{}
+              $csprojFiles = Get-ChildItem -Recurse -Filter *.csproj -ErrorAction SilentlyContinue
 
-                # Get project name from .csproj directory name
-                $csproj = Get-ChildItem -Recurse -Filter *.csproj | Select-Object -First 1
-                if ($csproj) {
-                  $projectName = Split-Path $csproj.Directory.FullName -Leaf
-                }
+              foreach ($file in $csprojFiles) {
+                  [xml]$xml = Get-Content $file.FullName
+                  $projectName = Split-Path $file.Directory.FullName -Leaf
+                  $d = @()
 
-                $deps = @()
-
-                # .csproj: NuGet, COM, DLL references
-                Get-ChildItem -Recurse -Filter *.csproj | ForEach-Object {
-                  [xml]$xml = Get-Content $_.FullName
-                  $deps += $xml.Project.ItemGroup.PackageReference | ForEach-Object { $_.Include }
-                  $deps += $xml.Project.ItemGroup.COMReference | ForEach-Object { $_.Include }
-                  $deps += $xml.Project.ItemGroup.Reference |
+                  $d += $xml.Project.ItemGroup.PackageReference | ForEach-Object { $_.Include }
+                  $d += $xml.Project.ItemGroup.COMReference | ForEach-Object { $_.Include }
+                  $d += $xml.Project.ItemGroup.Reference |
                     Where-Object { $_.Include -match "Application" -or $_.HintPath -match "Application" } |
                     ForEach-Object { $_.Include }
-                }
 
-                # packages.config
-                Get-ChildItem -Recurse -Filter packages.config | ForEach-Object {
-                  [xml]$xml = Get-Content $_.FullName
-                  $deps += $xml.packages.package | ForEach-Object { $_.id }
-                }
-
-                # 🔍 web.config - Look for URL-like settings
-                Get-ChildItem -Recurse -Filter web.config | ForEach-Object {
-                  [xml]$xml = Get-Content $_.FullName
-                  $urls = $xml.configuration.appSettings.add |
-                    Where-Object { $_.value -match "^https?://" } |
-                    ForEach-Object { $_.value }
-                  $deps += $urls
-                }
-
-                # 🔍 appsettings.json - Look for external service URLs
-                Get-ChildItem -Recurse -Filter appsettings.json | ForEach-Object {
-                  $json = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                  $urls = $json.PSObject.Properties.Value |
-                    Where-Object { $_ -is [string] -and ($_ -match "^https?://") }
-                  $deps += $urls
-                }
-
-                if ($deps.Count -gt 0) {
-                  $result += [PSCustomObject]@{
-                    project = $projectName
-                    dependencies = $deps | Sort-Object -Unique
+                  if ($d.Count -gt 0) {
+                      $deps[$projectName] = $d
                   }
-                }
+              }
 
-                Set-Location ..
-            }
+              $pkgFiles = Get-ChildItem -Recurse -Filter packages.config -ErrorAction SilentlyContinue
+              foreach ($file in $pkgFiles) {
+                  [xml]$xml = Get-Content $file.FullName
+                  $projectName = Split-Path $file.Directory.FullName -Leaf
+                  $d = $xml.packages.package | ForEach-Object { $_.id }
 
-            $result | ConvertTo-Json -Depth 3 | Out-File dependencies.json -Encoding utf8
+                  if ($deps.ContainsKey($projectName)) {
+                      $deps[$projectName] += $d
+                  } else {
+                      $deps[$projectName] = $d
+                  }
+              }
 
-      - name: Generate .dot file
+              foreach ($kv in $deps.GetEnumerator()) {
+                  $result += [PSCustomObject]@{
+                      project = $kv.Key
+                      dependencies = $kv.Value | Sort-Object -Unique
+                  }
+              }
+
+              Set-Location ..
+          }
+
+          $result | ConvertTo-Json -Depth 3 | Out-File dependencies.json -Encoding utf8
+
+      - name: Generate .dot file with stand-alone nodes
         shell: pwsh
         run: |
           $json = Get-Content dependencies.json | ConvertFrom-Json
-          $dot = "digraph Dependencies {`n  rankdir=LR;"
+          $dotLines = @("digraph Dependencies {", "  rankdir=LR;")
+          $allNodes = @()
+
           foreach ($item in $json) {
+              $allNodes += $item.project
+              $allNodes += $item.dependencies
               foreach ($dep in $item.dependencies) {
                   if ($dep -and $dep -ne $item.project) {
-                    $dot += "`n  `"$($item.project)`" -> `"$($dep)`";"
+                      $dotLines += "  `"$($item.project)`" -> `"$($dep)`";"
                   }
               }
           }
-          $dot += "`n}"
-          $dot | Out-File dependency_graph.dot -Encoding utf8
+
+          foreach ($node in $allNodes | Sort-Object -Unique) {
+              if (-not ($dotLines -join "`n" -match "`"$node`"")) {
+                  $dotLines += "  `"$node`";"
+              }
+          }
+
+          $dotLines += "}"
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $dotLines | Out-File artifacts/dependency_graph.dot -Encoding utf8
+          Move-Item dependencies.json artifacts/
 
       - name: Install Graphviz and render SVG
         run: |
           choco install graphviz -y
-          mkdir artifacts
-          dot -Tsvg dependency_graph.dot -o artifacts/graph.svg
-          move dependencies.json artifacts/
-          move dependency_graph.dot artifacts/
+          dot -Tsvg artifacts/dependency_graph.dot -o artifacts/graph.svg
 
-      - name: Inline SVG into index.html
+      - name: Generate index.html with inline SVG
         shell: pwsh
         run: |
           $svg = Get-Content artifacts/graph.svg -Raw
           $html = @"
-			<!DOCTYPE html>
-			<html lang='en'>
-			<head>
-			  <meta charset='UTF-8'>
-			  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-			  <title>Dependency Graph</title>
-			  <style>
-				body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; text-align: center; margin: 0; padding: 2rem; }
-				header { background: #0366d6; color: white; padding: 1rem; }
-				svg { max-width: 100%; height: auto; background: white; border: 1px solid #ccc; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 2rem; }
-				footer { margin-top: 2rem; color: #555; font-size: 0.9rem; }
-			  </style>
-			</head>
-			<body>
-			  <header>
-				<h1>📌 Application Dependency Graph</h1>
-				<p>Updated automatically every 5 minutes</p>
-			  </header>
-			  <div class="svg-container">
-			  $svg
-			  </div>
-			  <footer>Generated by GitHub Actions and Graphviz</footer>
-			</body>
-			</html>
-			"@
+                <!DOCTYPE html>
+                <html lang='en'>
+                <head>
+                  <meta charset='UTF-8'>
+                  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                  <title>Dependency Graph</title>
+                  <style>
+                    body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; text-align: center; margin: 0; padding: 2rem; }
+                    header { background: #0366d6; color: white; padding: 1rem; }
+                    svg { max-width: 100%; height: auto; background: white; border: 1px solid #ccc; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 2rem; }
+                    footer { margin-top: 2rem; color: #555; font-size: 0.9rem; }
+                  </style>
+                </head>
+                <body>
+                  <header>
+                    <h1>📌 Application Dependency Graph</h1>
+                    <p>Updated automatically every 5 minutes</p>
+                  </header>
+                  $svg
+                  <footer>Generated by GitHub Actions and Graphviz</footer>
+                </body>
+                </html>
+                "@
           $html | Out-File artifacts/index.html -Encoding utf8
 
       - name: Deploy to GitHub Pages
@@ -149,4 +144,3 @@ jobs:
           publish_dir: ./artifacts
           user_name: github-actions[bot]
           user_email: github-actions[bot]@users.noreply.github.com
-
