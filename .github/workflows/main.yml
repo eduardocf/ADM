@@ -10,73 +10,96 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout orchestrator repo
         uses: actions/checkout@v3
 
       - name: Clone application repositories
+        shell: pwsh
         run: |
           $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
           foreach ($repo in $repos) {
             git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/eduardocf/$repo.git
           }
-        shell: pwsh
 
-      - name: Extract dependencies (.NET)
+      - name: Extract dependencies (including COM and DLL references)
         shell: pwsh
         run: |
           $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
           $result = @()
+
           foreach ($repo in $repos) {
               Set-Location $repo
-              $dependencies = @{}
+              $projectDependencies = @{}
+              $csprojFiles = Get-ChildItem -Recurse -Filter *.csproj -ErrorAction SilentlyContinue
+              
+              foreach ($file in $csprojFiles) {
+                  [xml]$xml = Get-Content $file.FullName
+                  $projectName = Split-Path $file.Directory.FullName -Leaf
+                  $deps = @()
 
-              Get-ChildItem -Recurse -Filter *.csproj | ForEach-Object {
-                [xml]$xml = Get-Content $_.FullName
-                $pkg = $xml.Project.ItemGroup.PackageReference | ForEach-Object { $_.Include }
-                if ($pkg) {
-                  $project = Split-Path $_.Directory.FullName -Leaf
-                  $dependencies[$project] = $pkg
-                }
+                  # NuGet references
+                  $deps += $xml.Project.ItemGroup.PackageReference | ForEach-Object { $_.Include }
+
+                  # COM references
+                  $deps += $xml.Project.ItemGroup.COMReference | ForEach-Object { $_.Include }
+
+                  # DLL references pointing to other apps
+                  $deps += $xml.Project.ItemGroup.Reference |
+                    Where-Object { $_.Include -match "Application" -or $_.HintPath -match "Application" } |
+                    ForEach-Object { $_.Include }
+
+                  if ($deps.Count -gt 0) {
+                    $projectDependencies[$projectName] = $deps
+                  }
               }
 
-              Get-ChildItem -Recurse -Filter packages.config | ForEach-Object {
-                [xml]$xml = Get-Content $_.FullName
-                $pkg = $xml.packages.package | ForEach-Object { $_.id }
-                $project = Split-Path $_.Directory.FullName -Leaf
-                if ($dependencies.ContainsKey($project)) {
-                  $dependencies[$project] += $pkg
-                } else {
-                  $dependencies[$project] = $pkg
-                }
+              # Legacy packages.config support
+              $pkgFiles = Get-ChildItem -Recurse -Filter packages.config -ErrorAction SilentlyContinue
+              foreach ($file in $pkgFiles) {
+                  [xml]$xml = Get-Content $file.FullName
+                  $pkgIds = $xml.packages.package | ForEach-Object { $_.id }
+                  $projectName = Split-Path $file.Directory.FullName -Leaf
+
+                  if ($projectDependencies.ContainsKey($projectName)) {
+                    $projectDependencies[$projectName] += $pkgIds
+                  } else {
+                    $projectDependencies[$projectName] = $pkgIds
+                  }
               }
 
-              foreach ($d in $dependencies.GetEnumerator()) {
-                $result += [PSCustomObject]@{ project = $d.Key; dependencies = $d.Value | Sort-Object -Unique }
+              foreach ($entry in $projectDependencies.GetEnumerator()) {
+                  $result += [PSCustomObject]@{
+                      project = $entry.Key
+                      dependencies = $entry.Value | Sort-Object -Unique
+                  }
               }
-
               Set-Location ..
           }
 
           $result | ConvertTo-Json -Depth 3 | Out-File dependencies.json -Encoding utf8
 
-      - name: Create DOT file from JSON
+      - name: Generate .dot file
         shell: pwsh
         run: |
           $json = Get-Content dependencies.json | ConvertFrom-Json
-          $lines = @("digraph Dependencies {", "  rankdir=LR;")
+          $dot = "digraph Dependencies {`n  rankdir=LR;"
           foreach ($item in $json) {
-            foreach ($dep in $item.dependencies) {
-              $lines += "  `"$($item.project)`" -> `"$dep`";"
-            }
+              foreach ($dep in $item.dependencies) {
+                  if ($dep -and $dep -ne $item.project) {
+                    $dot += "`n  `"$($item.project)`" -> `"$($dep)`";"
+                  }
+              }
           }
-          $lines += "}"
-          $lines | Out-File dependency_graph.dot -Encoding utf8
+          $dot += "`n}"
+          $dot | Out-File dependency_graph.dot -Encoding utf8
 
       - name: Install Graphviz and render SVG
         run: |
           choco install graphviz -y
           mkdir artifacts
           dot -Tsvg dependency_graph.dot -o artifacts/graph.svg
+          move dependencies.json artifacts/
+          move dependency_graph.dot artifacts/
 
       - name: Inline SVG into index.html
         shell: pwsh
@@ -109,8 +132,6 @@ jobs:
           </html>
           "@
           $html | Out-File artifacts/index.html -Encoding utf8
-          Move-Item dependencies.json artifacts/
-          Move-Item dependency_graph.dot artifacts/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
@@ -118,3 +139,5 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
           publish_dir: ./artifacts
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
