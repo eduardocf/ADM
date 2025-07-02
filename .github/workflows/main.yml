@@ -110,7 +110,7 @@ jobs:
       - name: Install Graphviz and render SVG
         run: |
           choco install graphviz -y
-          mkdir artifacts
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
           dot -Tsvg dependency_graph.dot -o artifacts/graph.svg
           move dependencies.json artifacts/
           move dependency_graph.dot artifacts/
