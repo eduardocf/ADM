@@ -78,20 +78,34 @@ jobs:
 
           $result | ConvertTo-Json -Depth 3 | Out-File dependencies.json -Encoding utf8
 
-      - name: Generate .dot file
+      - name: Generate .dot file (including disconnected nodes)
         shell: pwsh
         run: |
           $json = Get-Content dependencies.json | ConvertFrom-Json
-          $dot = "digraph Dependencies {`n  rankdir=LR;"
+          $dotLines = @("digraph Dependencies {", "  rankdir=LR;")
+      
+          # Track all node names
+          $allNodes = @()
           foreach ($item in $json) {
+              $allNodes += $item.project
+              $allNodes += $item.dependencies
               foreach ($dep in $item.dependencies) {
                   if ($dep -and $dep -ne $item.project) {
-                    $dot += "`n  `"$($item.project)`" -> `"$($dep)`";"
+                      $dotLines += "  `"$($item.project)`" -> `"$($dep)`";"
                   }
               }
           }
-          $dot += "`n}"
-          $dot | Out-File dependency_graph.dot -Encoding utf8
+      
+          # Emit orphan nodes (not connected to anything)
+          foreach ($node in $allNodes | Sort-Object -Unique) {
+              if (-not ($dotLines -match "`"$node`"")) {
+                  $dotLines += "  `"$node`";"
+              }
+          }
+      
+          $dotLines += "}"
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $dotLines | Out-File artifacts/dependency_graph.dot -Encoding utf8
 
       - name: Install Graphviz and render SVG
         run: |
