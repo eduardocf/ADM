@@ -1,0 +1,130 @@
+name: Build and Publish Dependency Graph
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Every 5 minutes
+  workflow_dispatch:
+
+jobs:
+  dependency-map:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v3
+
+      - name: Clone application repositories
+        run: |
+          git clone https://github.com/eduardocf/Application01.git
+          git clone https://github.com/eduardocf/Application02.git
+          git clone https://github.com/eduardocf/Application03.git
+          git clone https://github.com/eduardocf/Application04.git
+          git clone https://github.com/eduardocf/Application05.git
+
+      - name: Extract .NET Dependencies to JSON
+        shell: pwsh
+        run: |
+          $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
+          $result = @()
+          foreach ($repo in $repos) {
+              Set-Location "./$repo"
+              $projectDependencies = @{}
+              $csprojFiles = Get-ChildItem -Recurse -Filter *.csproj -ErrorAction SilentlyContinue
+              foreach ($file in $csprojFiles) {
+                  [xml]$xml = Get-Content $file.FullName
+                  $deps = $xml.Project.ItemGroup.PackageReference | ForEach-Object { $_.Include }
+                  $name = Split-Path $file.Directory.FullName -Leaf
+                  $projectDependencies[$name] = @($deps)
+              }
+              $pkgConfigFiles = Get-ChildItem -Recurse -Filter packages.config -ErrorAction SilentlyContinue
+              foreach ($file in $pkgConfigFiles) {
+                  [xml]$xml = Get-Content $file.FullName
+                  $deps = $xml.packages.package | ForEach-Object { $_.id }
+                  $name = Split-Path $file.Directory.FullName -Leaf
+                  if ($projectDependencies.ContainsKey($name)) {
+                      $projectDependencies[$name] += $deps
+                  } else {
+                      $projectDependencies[$name] = @($deps)
+                  }
+              }
+              foreach ($entry in $projectDependencies.GetEnumerator()) {
+                  $result += [PSCustomObject]@{
+                      project = $entry.Key
+                      dependencies = $entry.Value | Sort-Object -Unique
+                  }
+              }
+              Set-Location ..
+          }
+
+          $result | ConvertTo-Json -Depth 3 | Out-File dependencies.json -Encoding utf8
+
+      - name: Generate .dot file
+        shell: pwsh
+        run: |
+          $json = Get-Content dependencies.json | ConvertFrom-Json
+          $dot = "digraph Dependencies {`n  rankdir=LR;"
+          foreach ($item in $json) {
+              $from = $item.project
+              foreach ($to in $item.dependencies) {
+                  $dot += "`n  `"$from`" -> `"$to`";"
+              }
+          }
+          $dot += "`n}"
+          $dot | Out-File dependency_graph.dot -Encoding utf8
+
+      - name: Install Graphviz and create .svg
+        run: |
+          choco install graphviz -y
+          mkdir artifacts
+          dot -Tsvg dependency_graph.dot -o artifacts/graph.svg
+          move dependencies.json artifacts/
+          move dependency_graph.dot artifacts/
+
+      - name: Add styled HTML page
+        run: |
+          echo "@importing HTML template..." 
+          @"
+<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"UTF-8\">
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+  <title>Dependency Graph</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; margin: 0; padding: 0; text-align: center; }
+    header { background: #0066cc; color: white; padding: 1rem; }
+    svg { width: 90%; height: auto; border: 1px solid #ccc; margin-top: 2rem; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    footer { margin: 2rem 0; font-size: 0.9rem; color: #777; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📊 Application Dependency Graph</h1>
+    <p>Auto-generated from .NET repositories</p>
+  </header>
+  <object type=\"image/svg+xml\" data=\"graph.svg\"></object>
+  <footer>
+    <p>Updated by GitHub Actions • $(Get-Date -Format "yyyy-MM-dd HH:mm") UTC</p>
+  </footer>
+</body>
+</html>
+"@ | Out-File artifacts/index.html -Encoding utf8
+
+      - name: Commit artifacts to dependency-artifacts branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin dependency-artifacts || true
+          git switch dependency-artifacts || git switch -c dependency-artifacts
+          git add artifacts/
+          git commit -m "Update dependency artifacts [CI skip]" || echo "No changes"
+          git push origin dependency-artifacts
+
+      - name: Deploy to GitHub Pages (gh-pages branch)
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./artifacts
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
