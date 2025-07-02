@@ -1,8 +1,8 @@
-name: Build and Publish Interactive Dependency Graph
+name: Build and Publish Dependency Graph
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/5 * * * *'  # Every 5 minutes
   workflow_dispatch:
 
 jobs:
@@ -21,23 +21,29 @@ jobs:
             git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/eduardocf/$repo.git
           }
 
-      - name: Extract all dependencies
+      - name: Extract dependencies (including COM and DLL references)
         shell: pwsh
         run: |
           $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
           $result = @()
+
           foreach ($repo in $repos) {
               Set-Location $repo
               $projectDependencies = @{}
               $csprojFiles = Get-ChildItem -Recurse -Filter *.csproj -ErrorAction SilentlyContinue
-
+              
               foreach ($file in $csprojFiles) {
                   [xml]$xml = Get-Content $file.FullName
                   $projectName = Split-Path $file.Directory.FullName -Leaf
                   $deps = @()
 
+                  # NuGet references
                   $deps += $xml.Project.ItemGroup.PackageReference | ForEach-Object { $_.Include }
+
+                  # COM references
                   $deps += $xml.Project.ItemGroup.COMReference | ForEach-Object { $_.Include }
+
+                  # DLL references pointing to other apps
                   $deps += $xml.Project.ItemGroup.Reference |
                     Where-Object { $_.Include -match "Application" -or $_.HintPath -match "Application" } |
                     ForEach-Object { $_.Include }
@@ -47,6 +53,7 @@ jobs:
                   }
               }
 
+              # Legacy packages.config support
               $pkgFiles = Get-ChildItem -Recurse -Filter packages.config -ErrorAction SilentlyContinue
               foreach ($file in $pkgFiles) {
                   [xml]$xml = Get-Content $file.FullName
@@ -66,7 +73,6 @@ jobs:
                       dependencies = $entry.Value | Sort-Object -Unique
                   }
               }
-
               Set-Location ..
           }
 
@@ -80,58 +86,48 @@ jobs:
           foreach ($item in $json) {
               foreach ($dep in $item.dependencies) {
                   if ($dep -and $dep -ne $item.project) {
-                      $dot += "`n  `"$($item.project)`" -> `"$($dep)`";"
+                    $dot += "`n  `"$($item.project)`" -> `"$($dep)`";"
                   }
               }
           }
           $dot += "`n}"
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8
+          $dot | Out-File dependency_graph.dot -Encoding utf8
 
-      - name: Generate interactive index.html
+      - name: Install Graphviz and render SVG
+        run: |
+          choco install graphviz -y
+          mkdir artifacts
+          dot -Tsvg dependency_graph.dot -o artifacts/graph.svg
+          move dependencies.json artifacts/
+          move dependency_graph.dot artifacts/
+
+      - name: Inline SVG into index.html
         shell: pwsh
         run: |
-          $dot = Get-Content artifacts/dependency_graph.dot -Raw
+          $svg = Get-Content artifacts/graph.svg -Raw
           $html = @"
           <!DOCTYPE html>
-          <html>
+          <html lang='en'>
           <head>
-            <meta charset='utf-8'>
-            <title>Interactive Dependency Graph</title>
-            <script src='https://unpkg.com/viz.js@2.1.2/viz.js'></script>
-            <script src='https://unpkg.com/viz.js@2.1.2/full.render.js'></script>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <title>Dependency Graph</title>
             <style>
               body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; text-align: center; margin: 0; padding: 2rem; }
               header { background: #0366d6; color: white; padding: 1rem; }
-              #graph { margin-top: 2rem; }
-              svg { width: 100%; height: auto; border: 1px solid #ccc; background: white; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+              svg { max-width: 100%; height: auto; background: white; border: 1px solid #ccc; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 2rem; }
+              footer { margin-top: 2rem; color: #555; font-size: 0.9rem; }
             </style>
           </head>
           <body>
             <header>
-              <h1>📌 Interactive Application Dependency Graph</h1>
-              <p>Updated every 5 minutes via GitHub Actions</p>
+              <h1>📌 Application Dependency Graph</h1>
+              <p>Updated automatically every 5 minutes</p>
             </header>
-            <div id='graph'></div>
-            <script>
-              const raw = `digraph Dependencies {
-                rankdir=LR;
-                "App04" -> "App03";
-                "App04" -> "App05";
-                "App01" -> "Newtonsoft.Json";
-                // ... other dependencies
-              }`;
-            
-              document.addEventListener("DOMContentLoaded", () => {
-                const viz = new Viz();
-                viz.renderSVGElement(raw)
-                  .then(svg => document.getElementById('graph').appendChild(svg))
-                  .catch(error => {
-                    console.error("Viz.js error:", error);
-                    document.getElementById('graph').innerHTML = "<p style='color:red;'>Graph render failed.</p>";
-                  });
-              });
-            </script>
+            <div class="svg-container">
+            $svg
+            </div>
+            <footer>Generated by GitHub Actions and Graphviz</footer>
           </body>
           </html>
           "@
