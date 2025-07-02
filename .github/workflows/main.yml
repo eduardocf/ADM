@@ -116,21 +116,7 @@ jobs:
               }
             }
 
-            foreach ($url in $item.api) {
-              if ($url) {
-                try {
-                  $uri = [System.Uri]$url
-                  $domain = $uri.Host
-                } catch {
-                  $domain = $url
-                }
-                $label = $domain.Replace('"', "'")
-                $lines += '  "' + $app + '" -> "' + $domain + '" [style=dashed, color=gray];'
-                $lines += '  "' + $domain + '" [label="' + $label + '", shape=diamond, fillcolor="#f8e0e6"];'
-                $seen[$domain] = $true
-              }
-            }
-          }
+            
 
           foreach ($n in $seen.Keys | Sort-Object) {
             if (-not ($lines -join "`n" -match '"' + [regex]::Escape($n) + '"')) {
