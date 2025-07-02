@@ -2,7 +2,7 @@ name: Build and Publish Dependency Graph
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # every 5 minutes
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -21,15 +21,13 @@ jobs:
             git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/eduardocf/$repo.git
           }
 
-      - name: Extract all dependencies (including config-based APIs)
+      - name: Extract dependencies (code + config)
         shell: pwsh
         run: |
           $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
           $result = @()
-
           foreach ($repo in $repos) {
               Set-Location $repo
-              $projectDependencies = @{}
               $projectName = $repo
               $csproj = Get-ChildItem -Recurse -Filter *.csproj | Select-Object -First 1
               if ($csproj) {
@@ -40,23 +38,20 @@ jobs:
               $dll = @()
               $api = @()
 
-              # .csproj parsing
               Get-ChildItem -Recurse -Filter *.csproj | ForEach-Object {
                 [xml]$xml = Get-Content $_.FullName
                 $nuget += $xml.Project.ItemGroup.PackageReference | ForEach-Object { $_.Include }
                 $dll += $xml.Project.ItemGroup.COMReference | ForEach-Object { $_.Include }
                 $dll += $xml.Project.ItemGroup.Reference |
-                    Where-Object { $_.Include -match "Application" -or $_.HintPath -match "Application" } |
-                    ForEach-Object { $_.Include }
+                  Where-Object { $_.Include -match "Application" -or $_.HintPath -match "Application" } |
+                  ForEach-Object { $_.Include }
               }
 
-              # packages.config
               Get-ChildItem -Recurse -Filter packages.config | ForEach-Object {
                 [xml]$xml = Get-Content $_.FullName
                 $nuget += $xml.packages.package | ForEach-Object { $_.id }
               }
 
-              # web.config (api URLs)
               Get-ChildItem -Recurse -Filter web.config | ForEach-Object {
                 [xml]$xml = Get-Content $_.FullName
                 $api += $xml.configuration.appSettings.add |
@@ -64,14 +59,14 @@ jobs:
                   ForEach-Object { $_.value }
               }
 
-              # appsettings.json (api URLs)
               Get-ChildItem -Recurse -Filter appsettings.json | ForEach-Object {
                 $json = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                $values = $json.PSObject.Properties.Value
-                foreach ($val in $values) {
-                  if ($val -is [string] -and $val -match "^https?://") { $api += $val }
-                  elseif ($val -is [hashtable]) {
-                    $api += $val.Values | Where-Object { $_ -match "^https?://" }
+                $json.PSObject.Properties | ForEach-Object {
+                  if ($_.Value -is [string] -and $_.Value -match "^https?://") {
+                    $api += $_.Value
+                  }
+                  elseif ($_.Value -is [hashtable]) {
+                    $_.Value.Values | Where-Object { $_ -match "^https?://" } | ForEach-Object { $api += $_ }
                   }
                 }
               }
@@ -88,68 +83,69 @@ jobs:
 
           $result | ConvertTo-Json -Depth 5 | Out-File dependencies.json -Encoding utf8
 
-      - name: Generate styled .dot file
+      - name: Generate safe .dot file
         shell: pwsh
         run: |
           $json = Get-Content dependencies.json | ConvertFrom-Json
-          $dot = New-Object System.Collections.Generic.List[string]
-          $dot.Add("digraph Dependencies {")
-          $dot.Add("  rankdir=LR;")
-          $dot.Add("  node [style=filled, fillcolor=white, fontname='Segoe UI'];")
-          
-          $allEdges = @()
+          $dot = @()
+          $dot += "digraph Dependencies {"
+          $dot += "  rankdir=LR;"
+          $dot += "  node [style=filled, fillcolor=white, fontname='Segoe UI'];"
           $allNodes = @{}
-          
+
           foreach ($item in $json) {
               $app = $item.project
-              $allNodes[$app] = 'fillcolor="#ffffff"'
-          
+              $allNodes[$app] = $true
+
               foreach ($pkg in $item.nuget) {
                   if ($pkg) {
-                      $allEdges += @{ from = $app; to = $pkg; attr = '[color=black]' }
-                      $allNodes[$pkg] = 'shape=box, fillcolor="#e6f0ff"'
+                      $allNodes[$pkg] = $true
+                      $dot += "  `"$app`" -> `"$pkg`" [color=black];"
+                      $dot += "  `"$pkg`" [shape=box, fillcolor=""#e6f0ff""];"
                   }
               }
-          
+
               foreach ($dll in $item.dll) {
                   if ($dll) {
-                      $allEdges += @{ from = $app; to = $dll; attr = '[color=blue]' }
-                      $allNodes[$dll] = 'shape=ellipse, fillcolor="#fff2cc"'
+                      $allNodes[$dll] = $true
+                      $dot += "  `"$app`" -> `"$dll`" [color=blue];"
+                      $dot += "  `"$dll`" [shape=ellipse, fillcolor=""#fff2cc""];"
                   }
               }
-          
+
               foreach ($url in $item.api) {
                   if ($url) {
-                      $label = $url -replace '^https?://', ''
-                      $cleanLabel = $label -replace '"', "'"
-                      $allEdges += @{ from = $app; to = $url; attr = '[style=dashed, color=gray]' }
-                      $allNodes[$url] = 'label="' + $cleanLabel + '", shape=diamond, fillcolor="#f8e0e6"'
+                      $label = $url -replace "^https?://", ""
+                      $label = $label -replace '"', "'"
+                      $allNodes[$url] = $true
+                      $dot += "  `"$app`" -> `"$url`" [style=dashed, color=gray];"
+                      $dot += "  `"$url`" [label=`"$label`", shape=diamond, fillcolor=""#f8e0e6""];"
                   }
               }
           }
-          
-          # Add edges
-          foreach ($e in $allEdges) {
-              $dot.Add('  "' + $e.from + '" -> "' + $e.to + '" ' + $e.attr + ';')
+
+          foreach ($node in $allNodes.Keys | Sort-Object) {
+              if (-not ($dot -join "`n" -match "`"$node`"")) {
+                  $dot += "  `"$node`";"
+              }
           }
-          
-          # Add nodes
-          foreach ($n in $allNodes.Keys | Sort-Object) {
-              $dot.Add('  "' + $n + '" [' + $allNodes[$n] + '];')
-          }
-          
-          $dot.Add("}")
-          
+
+          $dot += "}"
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8
-          Move-Item dependencies.json artifacts/
+
+      - name: Upload .dot file for debugging
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-graph-dot
+          path: artifacts/dependency_graph.dot
 
       - name: Install Graphviz and render SVG
         run: |
           choco install graphviz -y
           dot -Tsvg artifacts/dependency_graph.dot -o artifacts/graph.svg
 
-      - name: Embed graph in index.html
+      - name: Embed SVG in HTML
         shell: pwsh
         run: |
           $svg = Get-Content artifacts/graph.svg -Raw
@@ -160,16 +156,16 @@ jobs:
             <meta charset='utf-8'>
             <title>App Dependency Graph</title>
             <style>
-              body { font-family: 'Segoe UI'; background: #f5f5f5; text-align: center; margin: 0; padding: 2rem; }
+              body { font-family: 'Segoe UI'; text-align: center; margin: 0; padding: 2rem; background: #f8f8f8; }
               header { background: #0366d6; color: white; padding: 1rem; }
-              svg { max-width: 100%; border: 1px solid #ccc; background: white; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-top: 2rem; }
-              footer { margin-top: 2rem; color: #777; font-size: 0.85rem; }
+              svg { width: 90%; margin-top: 2rem; background: white; border: 1px solid #ccc; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+              footer { margin-top: 2rem; color: #666; font-size: 0.85rem; }
             </style>
           </head>
           <body>
-            <header><h1>📌 Application Dependency Graph</h1><p>NuGet • DLL • APIs</p></header>
+            <header><h1>📊 Application Dependency Graph</h1><p>NuGet • DLL • API URLs</p></header>
             $svg
-            <footer>Generated by GitHub Actions + Graphviz</footer>
+            <footer>Generated via GitHub Actions and Graphviz</footer>
           </body>
           </html>
           "@
@@ -181,5 +177,3 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
           publish_dir: ./artifacts
-          user_name: github-actions[bot]
-          user_email: github-actions[bot]@users.noreply.github.com
