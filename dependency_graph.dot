@@ -1,6 +1,6 @@
 digraph Dependencies {
   rankdir=LR;
-  node [style=filled, fontname='Segoe UI'];
+  node [style=filled];
   "Application02" -> "Swashbuckle.AspNetCore" [color=black];
   "Swashbuckle.AspNetCore" [shape=box, fillcolor="#e6f0ff"];
   "Application02" -> "Application04" [color=blue];
