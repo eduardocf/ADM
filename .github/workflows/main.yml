@@ -13,13 +13,13 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v3
 
-      - name: Clone application repositories
+      - name: Clone repositories securely
         run: |
-          git clone https://github.com/eduardocf/Application01.git
-          git clone https://github.com/eduardocf/Application02.git
-          git clone https://github.com/eduardocf/Application03.git
-          git clone https://github.com/eduardocf/Application04.git
-          git clone https://github.com/eduardocf/Application05.git
+          $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
+          foreach ($repo in $repos) {
+            git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/org/$repo.git
+          }
+        shell: pwsh
 
       - name: Extract .NET Dependencies to JSON
         shell: pwsh
