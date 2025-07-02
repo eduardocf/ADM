@@ -84,31 +84,31 @@ jobs:
         run: |
           echo "@importing HTML template..." 
           @"
-<!DOCTYPE html>
-<html lang=\"en\">
-<head>
-  <meta charset=\"UTF-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-  <title>Dependency Graph</title>
-  <style>
-    body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; margin: 0; padding: 0; text-align: center; }
-    header { background: #0066cc; color: white; padding: 1rem; }
-    svg { width: 90%; height: auto; border: 1px solid #ccc; margin-top: 2rem; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    footer { margin: 2rem 0; font-size: 0.9rem; color: #777; }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>📊 Application Dependency Graph</h1>
-    <p>Auto-generated from .NET repositories</p>
-  </header>
-  <object type=\"image/svg+xml\" data=\"graph.svg\"></object>
-  <footer>
-    <p>Updated by GitHub Actions • $(Get-Date -Format "yyyy-MM-dd HH:mm") UTC</p>
-  </footer>
-</body>
-</html>
-"@ | Out-File artifacts/index.html -Encoding utf8
+          <!DOCTYPE html>
+          <html lang=\"en\">
+          <head>
+            <meta charset=\"UTF-8\">
+            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+            <title>Dependency Graph</title>
+            <style>
+              body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; margin: 0; padding: 0; text-align: center; }
+              header { background: #0066cc; color: white; padding: 1rem; }
+              svg { width: 90%; height: auto; border: 1px solid #ccc; margin-top: 2rem; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+              footer { margin: 2rem 0; font-size: 0.9rem; color: #777; }
+            </style>
+          </head>
+          <body>
+            <header>
+              <h1>📊 Application Dependency Graph</h1>
+              <p>Auto-generated from .NET repositories</p>
+            </header>
+            <object type=\"image/svg+xml\" data=\"graph.svg\"></object>
+            <footer>
+              <p>Updated by GitHub Actions • $(Get-Date -Format "yyyy-MM-dd HH:mm") UTC</p>
+            </footer>
+          </body>
+          </html>
+          "@ | Out-File artifacts/index.html -Encoding utf8
 
       - name: Commit artifacts to dependency-artifacts branch
         run: |
