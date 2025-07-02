@@ -115,8 +115,7 @@ jobs:
                 $seen[$dll] = $true
               }
             }
-
-            
+          }
 
           foreach ($n in $seen.Keys | Sort-Object) {
             if (-not ($lines -join "`n" -match '"' + [regex]::Escape($n) + '"')) {
