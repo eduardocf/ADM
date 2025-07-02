@@ -1,0 +1,32 @@
+[
+  {
+    "project": "Application01",
+    "dependencies": null
+  },
+  {
+    "project": "Application02",
+    "dependencies": [
+      "Application04",
+      "Application05",
+      "Swashbuckle.AspNetCore"
+    ]
+  },
+  {
+    "project": "Application03",
+    "dependencies": [
+      "Application05",
+      "Newtonsoft.Json"
+    ]
+  },
+  {
+    "project": "Application04",
+    "dependencies": [
+      "Application03",
+      "RabbitMQ.Client"
+    ]
+  },
+  {
+    "project": "Application05",
+    "dependencies": "Dapper"
+  }
+]
