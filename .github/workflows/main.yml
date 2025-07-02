@@ -88,61 +88,56 @@ jobs:
 
           $result | ConvertTo-Json -Depth 5 | Out-File dependencies.json -Encoding utf8
 
-      - name: Generate styled .dot file
+      - name: Generate safe .dot file
         shell: pwsh
         run: |
           $json = Get-Content dependencies.json | ConvertFrom-Json
-          $dot = New-Object System.Collections.Generic.List[string]
-          $dot.Add("digraph Dependencies {")
-          $dot.Add("  rankdir=LR;")
-          $dot.Add("  node [style=filled, fillcolor=white, fontname='Segoe UI'];")
-          
-          $allEdges = @()
+          $dot = @()
+          $dot += "digraph Dependencies {"
+          $dot += "  rankdir=LR;"
+          $dot += "  node [style=filled, fillcolor=white, fontname='Segoe UI'];"
           $allNodes = @{}
-          
+
           foreach ($item in $json) {
               $app = $item.project
-              $allNodes[$app] = 'fillcolor="#ffffff"'
-          
+              $allNodes[$app] = $true
+
               foreach ($pkg in $item.nuget) {
                   if ($pkg) {
-                      $allEdges += @{ from = $app; to = $pkg; attr = '[color=black]' }
-                      $allNodes[$pkg] = 'shape=box, fillcolor="#e6f0ff"'
+                      $allNodes[$pkg] = $true
+                      $dot += "  `"$app`" -> `"$pkg`" [color=black];"
+                      $dot += "  `"$pkg`" [shape=box, fillcolor=""#e6f0ff""];"
                   }
               }
-          
+
               foreach ($dll in $item.dll) {
                   if ($dll) {
-                      $allEdges += @{ from = $app; to = $dll; attr = '[color=blue]' }
-                      $allNodes[$dll] = 'shape=ellipse, fillcolor="#fff2cc"'
+                      $allNodes[$dll] = $true
+                      $dot += "  `"$app`" -> `"$dll`" [color=blue];"
+                      $dot += "  `"$dll`" [shape=ellipse, fillcolor=""#fff2cc""];"
                   }
               }
-          
+
               foreach ($url in $item.api) {
                   if ($url) {
-                      $label = $url -replace '^https?://', ''
-                      $cleanLabel = $label -replace '"', "'"
-                      $allEdges += @{ from = $app; to = $url; attr = '[style=dashed, color=gray]' }
-                      $allNodes[$url] = 'label="' + $cleanLabel + '", shape=diamond, fillcolor="#f8e0e6"'
+                      $label = $url -replace "^https?://", ""
+                      $label = $label -replace '"', "'"
+                      $allNodes[$url] = $true
+                      $dot += "  `"$app`" -> `"$url`" [style=dashed, color=gray];"
+                      $dot += "  `"$url`" [label=`"$label`", shape=diamond, fillcolor=""#f8e0e6""];"
                   }
               }
           }
-          
-          # Add edges
-          foreach ($e in $allEdges) {
-              $dot.Add('  "' + $e.from + '" -> "' + $e.to + '" ' + $e.attr + ';')
+
+          foreach ($node in $allNodes.Keys | Sort-Object) {
+              if (-not ($dot -join "`n" -match "`"$node`"")) {
+                  $dot += "  `"$node`";"
+              }
           }
-          
-          # Add nodes
-          foreach ($n in $allNodes.Keys | Sort-Object) {
-              $dot.Add('  "' + $n + '" [' + $allNodes[$n] + '];')
-          }
-          
-          $dot.Add("}")
-          
+
+          $dot += "}"
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8
-          Move-Item dependencies.json artifacts/
+          $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8      
 
       - name: Upload .dot file for debugging
         uses: actions/upload-artifact@v3
