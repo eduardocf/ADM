@@ -114,11 +114,23 @@ jobs:
             </header>
             <div id='graph'></div>
             <script>
-              const dot = `$($dot -replace "`"`", "\\`"`")`;
-              const viz = new Viz();
-              viz.renderSVGElement(dot)
-                .then(svg => document.getElementById('graph').appendChild(svg))
-                .catch(error => console.error(error));
+              const raw = `digraph Dependencies {
+                rankdir=LR;
+                "App04" -> "App03";
+                "App04" -> "App05";
+                "App01" -> "Newtonsoft.Json";
+                // ... other dependencies
+              }`;
+            
+              document.addEventListener("DOMContentLoaded", () => {
+                const viz = new Viz();
+                viz.renderSVGElement(raw)
+                  .then(svg => document.getElementById('graph').appendChild(svg))
+                  .catch(error => {
+                    console.error("Viz.js error:", error);
+                    document.getElementById('graph').innerHTML = "<p style='color:red;'>Graph render failed.</p>";
+                  });
+              });
             </script>
           </body>
           </html>
