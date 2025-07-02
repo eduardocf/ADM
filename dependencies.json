@@ -1,9 +1,5 @@
 [
   {
-    "project": "Application01",
-    "dependencies": null
-  },
-  {
     "project": "Application02",
     "dependencies": "Swashbuckle.AspNetCore"
   },
