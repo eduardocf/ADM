@@ -8,4 +8,5 @@ digraph Dependencies {
   "Application04" -> "Application03";
   "Application04" -> "RabbitMQ.Client";
   "Application05" -> "Dapper";
+  "Application01";
 }
