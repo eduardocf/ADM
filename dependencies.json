@@ -22,7 +22,6 @@
     "project": "Application04",
     "dependencies": [
       "Application03",
-      "Application05",
       "RabbitMQ.Client"
     ]
   },

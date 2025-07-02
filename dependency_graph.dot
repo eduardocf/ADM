@@ -6,7 +6,6 @@ digraph Dependencies {
   "Application03" -> "Application05";
   "Application03" -> "Newtonsoft.Json";
   "Application04" -> "Application03";
-  "Application04" -> "Application05";
   "Application04" -> "RabbitMQ.Client";
   "Application05" -> "Dapper";
 }
