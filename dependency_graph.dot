@@ -1,3 +1,25 @@
 digraph Dependencies {
   node[shape=ellipse style="rounded,filled" color="lightgoldenrodyellow" ]
+  "Application01" -> "Azure.Core" [color=black];
+  "Azure.Core" [shape=box, color="#e6f0ff"];
+  "Application01" -> "Newtonsoft.Json" [color=black];
+  "Newtonsoft.Json" [shape=box, color="#e6f0ff"];
+  "Application01" -> "Application02" [color=blue];
+  "Application02" [shape=ellipse, color="lightgoldenrodyellow"];
+  "Application02" -> "Swashbuckle.AspNetCore" [color=black];
+  "Swashbuckle.AspNetCore" [shape=box, color="#e6f0ff"];
+  "Application02" -> "Application04" [color=blue];
+  "Application04" [shape=ellipse, color="lightgoldenrodyellow"];
+  "Application02" -> "Application05" [color=blue];
+  "Application05" [shape=ellipse, color="lightgoldenrodyellow"];
+  "Application03" -> "Newtonsoft.Json" [color=black];
+  "Newtonsoft.Json" [shape=box, color="#e6f0ff"];
+  "Application03" -> "Application05" [color=blue];
+  "Application05" [shape=ellipse, color="lightgoldenrodyellow"];
+  "Application04" -> "RabbitMQ.Client" [color=black];
+  "RabbitMQ.Client" [shape=box, color="#e6f0ff"];
+  "Application04" -> "Application03" [color=blue];
+  "Application03" [shape=ellipse, color="lightgoldenrodyellow"];
+  "Application05" -> "Dapper" [color=black];
+  "Dapper" [shape=box, color="#e6f0ff"];
 }

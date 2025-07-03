@@ -1,0 +1,33 @@
+[
+  {
+    "project": "Application01",
+    "nuget": [
+      "Azure.Core",
+      "Newtonsoft.Json"
+    ],
+    "dll": "Application02"
+  },
+  {
+    "project": "Application02",
+    "nuget": "Swashbuckle.AspNetCore",
+    "dll": [
+      "Application04",
+      "Application05"
+    ]
+  },
+  {
+    "project": "Application03",
+    "nuget": "Newtonsoft.Json",
+    "dll": "Application05"
+  },
+  {
+    "project": "Application04",
+    "nuget": "RabbitMQ.Client",
+    "dll": "Application03"
+  },
+  {
+    "project": "Application05",
+    "nuget": "Dapper",
+    "dll": null
+  }
+]
