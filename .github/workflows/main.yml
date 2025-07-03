@@ -21,7 +21,7 @@ jobs:
             git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/eduardocf/$repo.git
           }
 
-      - name: Extract dependencies including config-based APIs
+      - name: Extract all dependencies including config-based APIs
         shell: pwsh
         run: |
           function Get-UrlsFromJson($obj) {
@@ -64,12 +64,12 @@ jobs:
                 ForEach-Object { $_.Include }
             }
 
-            Get-ChildItem -Recurse -Filter packages.config -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ChildItem -Recurse -Filter packages.config | ForEach-Object {
               [xml]$xml = Get-Content $_.FullName
               $nuget += $xml.packages.package | ForEach-Object { $_.id }
             }
 
-            Get-ChildItem -Recurse -Include *.config -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ChildItem -Recurse -Include *.config | ForEach-Object {
               try {
                 [xml]$xml = Get-Content $_.FullName
                 $settings = $xml.SelectNodes("//appSettings/add") | Where-Object { $_.value -match '^https?://' }
@@ -77,7 +77,7 @@ jobs:
               } catch {}
             }
 
-            Get-ChildItem -Recurse -Filter appsettings.json -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ChildItem -Recurse -Filter appsettings.json | ForEach-Object {
               try {
                 $json = Get-Content $_.FullName -Raw | ConvertFrom-Json
                 $apis += Get-UrlsFromJson $json
@@ -95,6 +95,13 @@ jobs:
           }
 
           $results | ConvertTo-Json -Depth 5 | Out-File dependencies.json -Encoding utf8
+
+      - name: Upload dependencies.json (debug preview)
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: extracted-dependencies
+          path: dependencies.json
 
       - name: Generate styled .dot file
         shell: pwsh
@@ -160,22 +167,22 @@ jobs:
           <!DOCTYPE html>
           <html>
           <head>
-              <meta charset='utf-8'>
-              <title>Dependency Graph</title>
-              <style>
+            <meta charset='utf-8'>
+            <title>Dependency Graph</title>
+            <style>
               body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; text-align: center; margin: 0; padding: 2rem; }
               header { background: #0366d6; color: white; padding: 1rem; }
               svg { max-width: 100%; height: auto; background: white; border: 1px solid #ccc; box-shadow: 0 0 12px rgba(0,0,0,0.1); margin-top: 2rem; }
               footer { margin-top: 2rem; color: #777; font-size: 0.85rem; }
-              </style>
+            </style>
           </head>
           <body>
-              <header>
+            <header>
               <h1>📊 Application Dependency Graph</h1>
-              <p>Color-coded by dependency type</p>
-              </header>
-              $svg
-              <footer>Generated via GitHub Actions & Graphviz</footer>
+              <p>NuGet • DLL • External APIs (by domain)</p>
+            </header>
+            $svg
+            <footer>Generated via GitHub Actions & Graphviz</footer>
           </body>
           </html>
           "@
