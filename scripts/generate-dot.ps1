@@ -1,3 +1,8 @@
+if (-not (Test-Path dependencies.json)) {
+  Write-Error "Missing dependencies.json at root."
+  exit 1
+}
+
 $json = Get-Content dependencies.json | ConvertFrom-Json
 $dot = @(
   'digraph Dependencies {',

@@ -3,7 +3,13 @@ $repos = @("Application01", "Application02", "Application03", "Application04", "
 $results = @()
 
 foreach ($repo in $repos) {
-  Set-Location $repo
+  $repoPath = "clones/$repo"
+  if (-Not (Test-Path $repoPath)) {
+    Write-Warning "Repo folder missing: $repoPath"
+    continue
+  }
+
+  Set-Location $repoPath
   $projectName = $repo
   $nuget = @()
   $dll = @()
@@ -33,7 +39,7 @@ foreach ($repo in $repos) {
     dll = $dll | Sort-Object -Unique
   }
 
-  Set-Location ..
+  Set-Location ../..
 }
 
 $results | ConvertTo-Json -Depth 5 | Out-File dependencies.json -Encoding utf8

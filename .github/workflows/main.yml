@@ -46,6 +46,10 @@ jobs:
         shell: pwsh
         run: pwsh scripts/generate-html.ps1
 
+      - name: Create comparison page
+        shell: pwsh
+        run: pwsh scripts/generate-comparison-page.ps1
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
