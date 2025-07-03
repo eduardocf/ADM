@@ -1,8 +1,8 @@
 name: Build and Publish Dependency Graph
 
 on:
-  #schedule:
-  #  - cron: '*/5 * * * *'
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -21,9 +21,21 @@ jobs:
             git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/eduardocf/$repo.git
           }
 
-      - name: Extract all dependencies
+      - name: Extract dependencies including config APIs
         shell: pwsh
         run: |
+          function Get-UrlsFromJson($obj) {
+            $found = @()
+            if ($obj -is [string] -and $obj -match '^https?://') {
+              $found += $obj
+            } elseif ($obj -is [hashtable]) {
+              foreach ($v in $obj.Values) { $found += Get-UrlsFromJson $v }
+            } elseif ($obj -is [System.Collections.IEnumerable]) {
+              foreach ($i in $obj) { $found += Get-UrlsFromJson $i }
+            }
+            return $found
+          }
+
           $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
           $results = @()
 
@@ -39,7 +51,7 @@ jobs:
               $projectName = Split-Path $csproj.Directory.FullName -Leaf
             }
 
-            Get-ChildItem -Recurse -Filter *.csproj -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ChildItem -Recurse -Filter *.csproj | ForEach-Object {
               [xml]$xml = Get-Content $_.FullName
               $nuget += $xml.Project.ItemGroup.PackageReference | ForEach-Object { $_.Include }
               $dll += $xml.Project.ItemGroup.COMReference | ForEach-Object { $_.Include }
@@ -53,23 +65,18 @@ jobs:
               $nuget += $xml.packages.package | ForEach-Object { $_.id }
             }
 
-            Get-ChildItem -Recurse -Filter appsettings.json  | ForEach-Object {
-              $json = Get-Content $_.FullName -Raw | ConvertFrom-Json
-              $json.PSObject.Properties | ForEach-Object {
-                $value = $_.Value
-                if ($value -is [string] -and $value -match '^https?://') {
-                  $apis += $value
-                } elseif ($value -is [hashtable]) {
-                  $value.Values | Where-Object { $_ -match '^https?://' } | ForEach-Object { $apis += $_ }
-                }
-              }
-            }
-
             Get-ChildItem -Recurse -Include *.config -ErrorAction SilentlyContinue | ForEach-Object {
               try {
                 [xml]$xml = Get-Content $_.FullName
                 $settings = $xml.SelectNodes("//appSettings/add") | Where-Object { $_.value -match '^https?://' }
                 $settings | ForEach-Object { $apis += $_.value }
+              } catch {}
+            }
+
+            Get-ChildItem -Recurse -Filter appsettings.json -ErrorAction SilentlyContinue | ForEach-Object {
+              try {
+                $json = Get-Content $_.FullName -Raw | ConvertFrom-Json
+                $apis += Get-UrlsFromJson $json
               } catch {}
             }
 
@@ -85,62 +92,53 @@ jobs:
 
           $results | ConvertTo-Json -Depth 5 | Out-File dependencies.json -Encoding utf8
 
-      - name: Generate styled .dot file
+      - name: Generate styled .dot file with shapes
         shell: pwsh
         run: |
           $json = Get-Content dependencies.json | ConvertFrom-Json
-          $lines = @(
-            "digraph Dependencies {",
-            "  rankdir=LR;",
-            "  node [style=filled];"
-          )
-          $seen = @{}
+          $dot = @("digraph Dependencies {", "  rankdir=LR;", "  node [style=filled, fontname=Segoe UI];")
+          $nodes = @{}
 
           foreach ($item in $json) {
             $app = $item.project
-            $seen[$app] = $true
+            $nodes[$app] = $true
 
             foreach ($pkg in $item.nuget) {
               if ($pkg) {
-                $lines += '  "' + $app + '" -> "' + $pkg + '" [color=black];'
-                $lines += '  "' + $pkg + '" [shape=box, fillcolor="#e6f0ff"];'
-                $seen[$pkg] = $true
+                $dot += '  "' + $app + '" -> "' + $pkg + '" [color=black];'
+                $dot += '  "' + $pkg + '" [shape=box, fillcolor="#e6f0ff"];'
+                $nodes[$pkg] = $true
               }
             }
 
             foreach ($dll in $item.dll) {
               if ($dll) {
-                $lines += '  "' + $app + '" -> "' + $dll + '" [color=blue];'
-                $lines += '  "' + $dll + '" [shape=ellipse, fillcolor="#fff2cc"];'
-                $seen[$dll] = $true
+                $dot += '  "' + $app + '" -> "' + $dll + '" [color=blue];'
+                $dot += '  "' + $dll + '" [shape=ellipse, fillcolor="#fff2cc"];'
+                $nodes[$dll] = $true
               }
             }
 
             foreach ($url in $item.api) {
               if ($url) {
-                try {
-                  $uri = [System.Uri]$url
-                  $domain = $uri.Host
-                } catch {
-                  $domain = $url
-                }
+                try { $domain = ([System.Uri]$url).Host } catch { $domain = $url }
                 $label = $domain.Replace('"', "'")
-                $lines += '  "' + $app + '" -> "' + $domain + '" [style=dashed, color=gray];'
-                $lines += '  "' + $domain + '" [label="' + $label + '", shape=diamond, fillcolor="#f8e0e6"];'
-                $seen[$domain] = $true
+                $dot += '  "' + $app + '" -> "' + $domain + '" [style=dashed, color=gray];'
+                $dot += '  "' + $domain + '" [label="' + $label + '", shape=diamond, fillcolor="#f8e0e6"];'
+                $nodes[$domain] = $true
               }
             }
           }
 
-          foreach ($n in $seen.Keys | Sort-Object) {
-            if (-not ($lines -join "`n" -match '"' + [regex]::Escape($n) + '"')) {
-              $lines += '  "' + $n + '";'
+          foreach ($node in $nodes.Keys | Sort-Object) {
+            if (-not ($dot -join "`n" -match '"' + [regex]::Escape($node) + '"')) {
+              $dot += '  "' + $node + '";'
             }
           }
 
-          $lines += "}"
+          $dot += "}"
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $lines | Out-File artifacts/dependency_graph.dot -Encoding utf8
+          $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8
           Move-Item dependencies.json artifacts/
 
       - name: Install Graphviz and render SVG
@@ -168,7 +166,7 @@ jobs:
           <body>
             <header>
               <h1>📊 Application Dependency Graph</h1>
-              <p>NuGet • DLL • External APIs</p>
+              <p>NuGet • DLL • External APIs (domain only)</p>
             </header>
             $svg
             <footer>Generated via GitHub Actions & Graphviz</footer>
@@ -183,5 +181,3 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
           publish_dir: ./artifacts
-          user_name: github-actions[bot]
-          user_email: github-actions[bot]@users.noreply.github.com
