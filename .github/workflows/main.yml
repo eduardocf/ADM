@@ -1,8 +1,8 @@
 name: Build and Publish Dependency Graph
 
 on:
-  #schedule:
-  #  - cron: '*/5 * * * *'
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
             git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/eduardocf/$repo.git
           }
 
-      - name: Extract dependencies including config APIs
+      - name: Extract dependencies including config-based APIs
         shell: pwsh
         run: |
           function Get-UrlsFromJson($obj) {
@@ -50,7 +50,7 @@ jobs:
             $dll = @()
             $apis = @()
 
-            $csproj = Get-ChildItem -Recurse -Filter *.csproj -ErrorAction SilentlyContinue | Select-Object -First 1
+            $csproj = Get-ChildItem -Recurse -Filter *.csproj | Select-Object -First 1
             if ($csproj) {
               $projectName = Split-Path $csproj.Directory.FullName -Leaf
             }
@@ -80,8 +80,7 @@ jobs:
             Get-ChildItem -Recurse -Filter appsettings.json -ErrorAction SilentlyContinue | ForEach-Object {
               try {
                 $json = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                $found = Get-UrlsFromJson $json
-                $apis += $found
+                $apis += Get-UrlsFromJson $json
               } catch {}
             }
 
@@ -97,51 +96,53 @@ jobs:
 
           $results | ConvertTo-Json -Depth 5 | Out-File dependencies.json -Encoding utf8
 
-      - name: Generate styled .dot file with shapes
+      - name: Generate styled .dot file
         shell: pwsh
         run: |
           $json = Get-Content dependencies.json | ConvertFrom-Json
-          $dot = @("digraph Dependencies {", "  rankdir=LR;", "  node [style=filled];")
-          $nodes = @{}
+          $dot = @(
+            'digraph Dependencies {',
+            '  node[shape=ellipse style="rounded,filled" color="lightgoldenrodyellow" ]'
+          )
+          $declared = @{}
 
           foreach ($item in $json) {
             $app = $item.project
-            $nodes[$app] = $true
+            $declared[$app] = $true
 
             foreach ($pkg in $item.nuget) {
               if ($pkg) {
                 $dot += '  "' + $app + '" -> "' + $pkg + '" [color=black];'
-                $dot += '  "' + $pkg + '" [shape=box, fillcolor="#e6f0ff"];'
-                $nodes[$pkg] = $true
+                $dot += '  "' + $pkg + '" [shape=box, color="#e6f0ff"];'
+                $declared[$pkg] = $true
               }
             }
 
             foreach ($dll in $item.dll) {
               if ($dll) {
                 $dot += '  "' + $app + '" -> "' + $dll + '" [color=blue];'
-                $dot += '  "' + $dll + '" [shape=ellipse, fillcolor="#fff2cc"];'
-                $nodes[$dll] = $true
+                $dot += '  "' + $dll + '" [shape=ellipse, color="lightgoldenrodyellow"];'
+                $declared[$dll] = $true
               }
             }
 
             foreach ($url in $item.api) {
               if ($url) {
                 try { $domain = ([System.Uri]$url).Host } catch { $domain = $url }
-                $label = $domain.Replace('"', "'")
-                $dot += '  "' + $app + '" -> "' + $domain + '" [style=dashed, color=gray];'
-                $dot += '  "' + $domain + '" [label="' + $label + '", shape=diamond, fillcolor="#f8e0e6"];'
-                $nodes[$domain] = $true
+                $dot += '  "' + $app + '" -> "' + $domain + '" [color=black];'
+                $dot += '  "' + $domain + '" [shape=diamond, color="#eafaf1"];'
+                $declared[$domain] = $true
               }
             }
           }
 
-          foreach ($node in $nodes.Keys | Sort-Object) {
+          foreach ($node in $declared.Keys | Sort-Object) {
             if (-not ($dot -join "`n" -match '"' + [regex]::Escape($node) + '"')) {
               $dot += '  "' + $node + '";'
             }
           }
 
-          $dot += "}"
+          $dot += '}'
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8
           Move-Item dependencies.json artifacts/
@@ -159,22 +160,22 @@ jobs:
           <!DOCTYPE html>
           <html>
           <head>
-            <meta charset='utf-8'>
-            <title>Dependency Graph</title>
-            <style>
+              <meta charset='utf-8'>
+              <title>Dependency Graph</title>
+              <style>
               body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; text-align: center; margin: 0; padding: 2rem; }
               header { background: #0366d6; color: white; padding: 1rem; }
               svg { max-width: 100%; height: auto; background: white; border: 1px solid #ccc; box-shadow: 0 0 12px rgba(0,0,0,0.1); margin-top: 2rem; }
               footer { margin-top: 2rem; color: #777; font-size: 0.85rem; }
-            </style>
+              </style>
           </head>
           <body>
-            <header>
+              <header>
               <h1>📊 Application Dependency Graph</h1>
-              <p>NuGet • DLL • External APIs (domain only)</p>
-            </header>
-            $svg
-            <footer>Generated via GitHub Actions & Graphviz</footer>
+              <p>Color-coded by dependency type</p>
+              </header>
+              $svg
+              <footer>Generated via GitHub Actions & Graphviz</footer>
           </body>
           </html>
           "@
