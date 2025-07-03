@@ -4,16 +4,26 @@
   <meta charset='utf-8'>
   <title>Dependency Graph</title>
   <style>
-    body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; text-align: center; margin: 0; padding: 2rem; }
+    body { font-family: 'Segoe UI'; background: #f5f5f5; text-align: center; padding: 2rem; margin: 0; }
     header { background: #0366d6; color: white; padding: 1rem; }
-    svg { max-width: 100%; height: auto; background: white; border: 1px solid #ccc; box-shadow: 0 0 12px rgba(0,0,0,0.1); margin-top: 2rem; }
-    footer { margin-top: 2rem; color: #777; font-size: 0.85rem; }
+    svg { width: 100%; height: auto; background: white; border: 1px solid #ccc; margin-top: 2rem; }
+    footer { margin-top: 2rem; font-size: 0.85rem; color: #777; }
+    select { font-size: 1rem; padding: 0.5rem; margin-top: 1rem; }
   </style>
 </head>
 <body>
   <header>
-    <h1>📊 Application Dependency Graph</h1>
-    <p>NuGet • DLL • External APIs (by domain)</p>
+    <h1>📊 Dependency Graph</h1>
+    <label for="nodeSelect">Highlight dependencies for:</label>
+    <select id="nodeSelect" onchange="highlightNode(this.value)">
+      <option value="">-- Select Node --</option>
+      <option value='Application01'>Application01</option>
+<option value='Application02'>Application02</option>
+<option value='Application03'>Application03</option>
+<option value='Application04'>Application04</option>
+<option value='Application05'>Application05</option>
+
+    </select>
   </header>
   <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
@@ -156,5 +166,13 @@
 </svg>
 
   <footer>Generated via GitHub Actions & Graphviz</footer>
+  <script>
+    function highlightNode(name) {
+      document.querySelectorAll("g").forEach(el => {
+        el.style.opacity = "0.2";
+        if (el.innerHTML.includes(name)) el.style.opacity = "1.0";
+      });
+    }
+  </script>
 </body>
 </html>
