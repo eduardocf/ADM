@@ -8,7 +8,7 @@ $html = @"
 <html>
 <head>
   <meta charset='utf-8'>
-  <title>Dependency Graph</title>
+  <title>Application Dependency Mapping</title>
   <style>
     body { font-family: 'Segoe UI'; background: #f5f5f5; text-align: center; margin: 0; padding: 2rem; }
     header { background: #0366d6; color: white; padding: 1rem; }
@@ -21,7 +21,7 @@ $html = @"
 </head>
 <body>
   <header>
-    <h1>📊 Dependency Graph</h1>
+    <h1>📊 Application Dependency Mapping</h1>
     <label for="nodeSelect">Highlight dependencies for:</label>
     <select id="nodeSelect" onchange="highlightNode(this.value)">
       <option value="">-- Show All --</option>
@@ -34,29 +34,28 @@ $html = @"
     Generated via GitHub Actions & Graphviz
   </footer>
   <script>
-    function highlightNode(selected) {
-      const nodes = document.querySelectorAll('g');
-      nodes.forEach(el => {
-        el.classList.remove('highlighted');
-        el.classList.remove('dimmed');
-      });
+      function highlightNode(selected) {
+        const groups = document.querySelectorAll("svg g");
 
-      if (!selected) return; // show all
+        groups.forEach(el => {
+          el.classList.remove("highlighted");
+          el.classList.remove("dimmed");
+        });
 
-      nodes.forEach(el => {
-        const content = el.textContent;
-        const isNode = content.includes('>' + selected + '<');
-        const isEdge = content.includes('->') && content.includes(selected);
-        const isRelated = content.includes('"' + selected + '"') || content.includes(selected + '"') || content.includes('"' + selected);
+        if (!selected) return; // Show all
 
-        if (isNode || isEdge || isRelated) {
-          el.classList.add('highlighted');
-        } else {
-          el.classList.add('dimmed');
-        }
-      });
-    }
-  </script>
+        groups.forEach(el => {
+          const title = el.querySelector("title");
+          const text = title ? title.textContent.trim() : "";
+
+          if (text === selected || text.includes("->" + selected) || text.includes(selected + "->")) {
+            el.classList.add("highlighted");
+          } else {
+            el.classList.add("dimmed");
+          }
+        });
+      }
+</script>
 </body>
 </html>
 "@
