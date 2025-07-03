@@ -24,13 +24,14 @@ jobs:
       - name: Extract all dependencies including config-based APIs
         shell: pwsh
         run: |
+          # Recursive function to extract all URLs
           function Get-UrlsFromJson($obj) {
             $found = @()
             if ($obj -is [string] -and $obj -match '^https?://') {
               $found += $obj
             } elseif ($obj -is [hashtable]) {
-              foreach ($key in $obj.Keys) {
-                $found += Get-UrlsFromJson $obj[$key]
+              foreach ($val in $obj.Values) {
+                $found += Get-UrlsFromJson $val
               }
             } elseif ($obj -is [System.Collections.IEnumerable]) {
               foreach ($item in $obj) {
@@ -77,11 +78,18 @@ jobs:
               } catch {}
             }
 
+            # Scan all appsettings.json files
             Get-ChildItem -Recurse -Filter appsettings.json | ForEach-Object {
               try {
-                $json = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                $apis += Get-UrlsFromJson $json
-              } catch {}
+                $raw = Get-Content $_.FullName -Raw
+                if ($raw -ne $null) {
+                  $json = $raw | ConvertFrom-Json
+                  $urls = Get-UrlsFromJson $json
+                  $apis += $urls
+                }
+              } catch {
+                Write-Warning "Failed to parse $($_.FullName): $_"
+              }
             }
 
             $results += [PSCustomObject]@{
