@@ -6,7 +6,7 @@
       "Newtonsoft.Json"
     ],
     "dll": null,
-    "api": null
+    "api": ["api01.com", "api.github.com"]
   },
   {
     "project": "Application02",
