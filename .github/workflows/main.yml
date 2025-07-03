@@ -26,7 +26,7 @@ jobs:
         run: |
           function Get-UrlsFromJson($obj) {
             $found = @()
-            if ($obj -is [string] -and $obj -match '^https?://') {
+            if ($obj -is [string] -and $obj -match '^http?://') {
               $found += $obj
             } elseif ($obj -is [hashtable]) {
               foreach ($v in $obj.Values) { $found += Get-UrlsFromJson $v }
