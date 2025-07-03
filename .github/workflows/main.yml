@@ -26,12 +26,16 @@ jobs:
         run: |
           function Get-UrlsFromJson($obj) {
             $found = @()
-            if ($obj -is [string] -and $obj -match '^http?://') {
+            if ($obj -is [string] -and $obj -match '^https?://') {
               $found += $obj
             } elseif ($obj -is [hashtable]) {
-              foreach ($v in $obj.Values) { $found += Get-UrlsFromJson $v }
+              foreach ($key in $obj.Keys) {
+                $found += Get-UrlsFromJson $obj[$key]
+              }
             } elseif ($obj -is [System.Collections.IEnumerable]) {
-              foreach ($i in $obj) { $found += Get-UrlsFromJson $i }
+              foreach ($item in $obj) {
+                $found += Get-UrlsFromJson $item
+              }
             }
             return $found
           }
@@ -76,7 +80,8 @@ jobs:
             Get-ChildItem -Recurse -Filter appsettings.json -ErrorAction SilentlyContinue | ForEach-Object {
               try {
                 $json = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                $apis += Get-UrlsFromJson $json
+                $found = Get-UrlsFromJson $json
+                $apis += $found
               } catch {}
             }
 
