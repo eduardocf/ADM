@@ -11,61 +11,17 @@ jobs:
 
     steps:
       - name: Checkout orchestrator repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Clone application repositories
         shell: pwsh
-        run: |
-          $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
-          foreach ($repo in $repos) {
-            git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/eduardocf/$repo.git
-          }
+        run: pwsh scripts/clone-repos.ps1
 
       - name: Extract code-based dependencies
         shell: pwsh
-        run: |
-          $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm"
-          $repos = @("Application01", "Application02", "Application03", "Application04", "Application05")
-          $results = @()
+        run: pwsh scripts/extract-dependencies.ps1
 
-          foreach ($repo in $repos) {
-            Set-Location $repo
-            $projectName = $repo
-            $nuget = @()
-            $dll = @()
-
-            $csproj = Get-ChildItem -Recurse -Filter *.csproj | Select-Object -First 1
-            if ($csproj) {
-              $projectName = Split-Path $csproj.Directory.FullName -Leaf
-            }
-
-            Get-ChildItem -Recurse -Filter *.csproj | ForEach-Object {
-              [xml]$xml = Get-Content $_.FullName
-              $nuget += $xml.Project.ItemGroup.PackageReference | ForEach-Object { $_.Include }
-              $dll += $xml.Project.ItemGroup.COMReference | ForEach-Object { $_.Include }
-              $dll += $xml.Project.ItemGroup.Reference |
-                Where-Object { $_.Include -match "Application" -or $_.HintPath -match "Application" } |
-                ForEach-Object { $_.Include }
-            }
-
-            Get-ChildItem -Recurse -Filter packages.config -ErrorAction SilentlyContinue | ForEach-Object {
-              [xml]$xml = Get-Content $_.FullName
-              $nuget += $xml.packages.package | ForEach-Object { $_.id }
-            }
-
-            $results += [PSCustomObject]@{
-              project = $projectName
-              nuget = $nuget | Sort-Object -Unique
-              dll = $dll | Sort-Object -Unique
-            }
-
-            Set-Location ..
-          }
-
-          $results | ConvertTo-Json -Depth 5 | Out-File dependencies.json -Encoding utf8
-          $results | ConvertTo-Json -Depth 5 | Out-File "dependencies_$timestamp.json" -Encoding utf8
-
-      - name: Upload dependencies.json for download
+      - name: Upload dependencies.json (versioned)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -74,104 +30,24 @@ jobs:
             dependencies.json
             dependencies_*.json
 
-      - name: Compare against previous version
+      - name: Compare to previous version
         shell: pwsh
-        run: |
-          if (Test-Path previous/dependencies.json) {
-            $new = Get-Content dependencies.json | ConvertFrom-Json
-            $old = Get-Content previous/dependencies.json | ConvertFrom-Json
-            $diff = Compare-Object $old $new -IncludeEqual -Property project, nuget, dll
-            $diff | Format-List | Out-File artifacts/diff_report.txt
-          }
+        run: pwsh scripts/compare-versions.ps1
 
-      - name: Generate styled .dot file
+      - name: Generate .dot file
         shell: pwsh
-        run: |
-          $json = Get-Content dependencies.json | ConvertFrom-Json
-          $dot = @(
-            'digraph Dependencies {',
-            '  node[shape=ellipse style="rounded,filled" color="lightgoldenrodyellow" ]'
-          )
-          $declared = @{}
+        run: pwsh scripts/generate-dot.ps1
 
-          foreach ($item in $json) {
-            $app = $item.project
-            $declared[$app] = $true
-
-            foreach ($pkg in $item.nuget) {
-              $dot += '  "' + $app + '" -> "' + $pkg + '" [color=black];'
-              $dot += '  "' + $pkg + '" [shape=box, color="#e6f0ff"];'
-              $declared[$pkg] = $true
-            }
-
-            foreach ($dll in $item.dll) {
-              $dot += '  "' + $app + '" -> "' + $dll + '" [color=blue];'
-              $dot += '  "' + $dll + '" [shape=ellipse, color="lightgoldenrodyellow"];'
-              $declared[$dll] = $true
-            }
-          }
-
-          foreach ($node in $declared.Keys | Sort-Object) {
-            if (-not ($dot -join "`n" -match '"' + [regex]::Escape($node) + '"')) {
-              $dot += '  "' + $node + '";'
-            }
-          }
-
-          $dot += '}'
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $dot | Out-File artifacts/dependency_graph.dot -Encoding utf8
-
-      - name: Install Graphviz and render SVG
-        run: |
-          choco install graphviz -y
-          dot -Tsvg artifacts/dependency_graph.dot -o artifacts/graph.svg
-
-      - name: Generate interactive index.html
+      - name: Render graph to SVG
         shell: pwsh
-        run: |
-          $svg = Get-Content artifacts/graph.svg -Raw
-          $nodes = (Get-Content dependencies.json | ConvertFrom-Json).project
-          $options = $nodes | Sort-Object | ForEach-Object { "<option value='$_'>$_</option>" } | Out-String
-          $html = @"
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset='utf-8'>
-            <title>Dependency Graph</title>
-            <style>
-              body { font-family: 'Segoe UI'; background: #f5f5f5; text-align: center; padding: 2rem; margin: 0; }
-              header { background: #0366d6; color: white; padding: 1rem; }
-              svg { width: 100%; height: auto; background: white; border: 1px solid #ccc; margin-top: 2rem; }
-              footer { margin-top: 2rem; font-size: 0.85rem; color: #777; }
-              select { font-size: 1rem; padding: 0.5rem; margin-top: 1rem; }
-            </style>
-          </head>
-          <body>
-            <header>
-              <h1>📊 Dependency Graph</h1>
-              <label for="nodeSelect">Highlight dependencies for:</label>
-              <select id="nodeSelect" onchange="highlightNode(this.value)">
-                <option value="">-- Select Node --</option>
-                $options
-              </select>
-            </header>
-            $svg
-            <footer>Generated via GitHub Actions & Graphviz</footer>
-            <script>
-              function highlightNode(name) {
-                document.querySelectorAll("g").forEach(el => {
-                  el.style.opacity = "0.2";
-                  if (el.innerHTML.includes(name)) el.style.opacity = "1.0";
-                });
-              }
-            </script>
-          </body>
-          </html>
-          "@
-          $html | Out-File artifacts/index.html -Encoding utf8
+        run: pwsh scripts/render-graph.ps1
+
+      - name: Create interactive index.html
+        shell: pwsh
+        run: pwsh scripts/generate-html.ps1
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
