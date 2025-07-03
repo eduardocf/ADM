@@ -1,7 +1,10 @@
 [
   {
     "project": "Application01",
-    "nuget": null,
+    "nuget": [
+      "Azure.Core",
+      "Newtonsoft.Json"
+    ],
     "dll": null,
     "api": null
   },
