@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset='utf-8'>
-  <title>Application Dependency Mapping</title>
+  <title>Dependency Graph</title>
   <style>
     body { font-family: 'Segoe UI'; background: #f5f5f5; text-align: center; margin: 0; padding: 2rem; }
     header { background: #0366d6; color: white; padding: 1rem; }
@@ -10,15 +10,15 @@
     svg { max-width: 100%; height: auto; background: white; border: 1px solid #ccc; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 2rem; }
     footer { margin-top: 2rem; color: #777; font-size: 0.85rem; }
     .dimmed { opacity: 0.2; }
-    .highlighted { opacity: 1; stroke: #ff6600; stroke-width: 2px; }
+    .highlighted { opacity: 1; }
   </style>
 </head>
 <body>
   <header>
-    <h1>📊 Application Dependency Mapping</h1>
+    <h1>📊 Dependency Graph</h1>
     <label for="nodeSelect">Highlight dependencies for:</label>
     <select id="nodeSelect" onchange="highlightNode(this.value)">
-      <option value="">-- Select Node --</option>
+      <option value="">-- Show All --</option>
       <option value='Application01'>Application01</option>
 <option value='Application02'>Application02</option>
 <option value='Application03'>Application03</option>
@@ -173,16 +173,24 @@
   </footer>
   <script>
     function highlightNode(selected) {
-      document.querySelectorAll('g').forEach(el => {
+      const nodes = document.querySelectorAll('g');
+      nodes.forEach(el => {
         el.classList.remove('highlighted');
-        el.classList.add('dimmed');
+        el.classList.remove('dimmed');
       });
-      if (!selected) return;
 
-      document.querySelectorAll('g').forEach(el => {
-        if (el.textContent.includes(selected)) {
-          el.classList.remove('dimmed');
+      if (!selected) return; // show all
+
+      nodes.forEach(el => {
+        const content = el.textContent;
+        const isNode = content.includes('>' + selected + '<');
+        const isEdge = content.includes('->') && content.includes(selected);
+        const isRelated = content.includes('"' + selected + '"') || content.includes(selected + '"') || content.includes('"' + selected);
+
+        if (isNode || isEdge || isRelated) {
           el.classList.add('highlighted');
+        } else {
+          el.classList.add('dimmed');
         }
       });
     }
