@@ -1,8 +1,8 @@
 name: Build and Publish Dependency Graph
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
+  #schedule:
+  #  - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -96,7 +96,7 @@ jobs:
         shell: pwsh
         run: |
           $json = Get-Content dependencies.json | ConvertFrom-Json
-          $dot = @("digraph Dependencies {", "  rankdir=LR;", "  node [style=filled, fontname=Segoe UI];")
+          $dot = @("digraph Dependencies {", "  rankdir=LR;", "  node [style=filled];")
           $nodes = @{}
 
           foreach ($item in $json) {
