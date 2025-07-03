@@ -53,7 +53,7 @@ jobs:
               $nuget += $xml.packages.package | ForEach-Object { $_.id }
             }
 
-            Get-ChildItem -Recurse -Filter appsettings.json -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ChildItem -Recurse -Filter appsettings.json  | ForEach-Object {
               $json = Get-Content $_.FullName -Raw | ConvertFrom-Json
               $json.PSObject.Properties | ForEach-Object {
                 $value = $_.Value
