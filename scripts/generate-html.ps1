@@ -34,28 +34,58 @@ $html = @"
     Generated via GitHub Actions & Graphviz
   </footer>
   <script>
-      function highlightNode(selected) {
-        const groups = document.querySelectorAll("svg g");
+    function highlightNode(selected) {
+      const groups = document.querySelectorAll("svg g");
 
-        groups.forEach(el => {
-          el.classList.remove("highlighted");
-          el.classList.remove("dimmed");
-        });
+      // Reset all elements
+      groups.forEach(g => {
+        g.classList.remove("dimmed");
+        g.classList.add("highlighted");
+      });
 
-        if (!selected) return; // Show all
+      if (!selected) return; // Show all if nothing selected
 
-        groups.forEach(el => {
-          const title = el.querySelector("title");
-          const text = title ? title.textContent.trim() : "";
+      // First, dim everything
+      groups.forEach(g => {
+        g.classList.remove("highlighted");
+        g.classList.add("dimmed");
+      });
 
-          if (text === selected || text.includes("->" + selected) || text.includes(selected + "->")) {
-            el.classList.add("highlighted");
-          } else {
-            el.classList.add("dimmed");
+      const targets = new Set();
+
+      groups.forEach(g => {
+        const title = g.querySelector("title");
+        const label = title ? title.textContent.trim() : "";
+
+        // Match direct node
+        if (label === selected) {
+          g.classList.remove("dimmed");
+          g.classList.add("highlighted");
+        }
+
+        // Match edge connections like "App -> Package"
+        if (label.includes("->")) {
+          const [from, to] = label.split("->").map(s => s.trim());
+          if (from === selected || to === selected) {
+            g.classList.remove("dimmed");
+            g.classList.add("highlighted");
+            targets.add(from);
+            targets.add(to);
           }
-        });
-      }
-</script>
+        }
+      });
+
+      // Highlight all directly connected nodes
+      groups.forEach(g => {
+        const title = g.querySelector("title");
+        const label = title ? title.textContent.trim() : "";
+        if (targets.has(label)) {
+          g.classList.remove("dimmed");
+          g.classList.add("highlighted");
+        }
+      });
+    }
+  </script>
 </body>
 </html>
 "@

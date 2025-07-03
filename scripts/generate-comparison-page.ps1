@@ -1,5 +1,5 @@
 ﻿# List all timestamped dependency files
-$files = Get-ChildItem -Path . -Filter "dependencies_*.json" | Sort-Object -Descending -Property LastWriteTime
+$files = Get-ChildItem -Path . -Filter "dependencies*.json" | Sort-Object -Descending -Property LastWriteTime
 if ($files.Count -lt 2) {
   "Not enough versioned files to compare." | Out-File artifacts/compare.html
   return
