@@ -38,6 +38,7 @@ jobs:
                 $found += Get-UrlsFromJson $item
               }
             }
+            Write-Warning "$($found): $_"
             return $found
           }
 
@@ -78,7 +79,6 @@ jobs:
               } catch {}
             }
 
-            # Scan all appsettings.json files
             Get-ChildItem -Recurse -Filter appsettings.json | ForEach-Object {
               try {
                 $raw = Get-Content $_.FullName -Raw
@@ -86,6 +86,9 @@ jobs:
                   $json = $raw | ConvertFrom-Json
                   $urls = Get-UrlsFromJson $json
                   $apis += $urls
+                } 
+                else {
+                  Write-Warning "null content on $($_.FullName): $_"
                 }
               } catch {
                 Write-Warning "Failed to parse $($_.FullName): $_"
