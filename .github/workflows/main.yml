@@ -88,10 +88,11 @@ jobs:
                   $apis += $urls
                 } 
                 else {
+                  Write-Warning "null content on "
                   Write-Warning "null content on $($_.FullName): $_"
                 }
               } catch {
-                Write-Warning "Failed to parse $($_.FullName): $_"
+                  Write-Warning "Failed to parse $($_.FullName): $_"
               }
             }
 
